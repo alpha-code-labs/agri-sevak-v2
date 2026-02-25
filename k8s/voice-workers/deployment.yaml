@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: voice-worker
-          image: kccregistry.azurecr.io/agent-worker:latest
+          image: kissanacr.azurecr.io/agent-worker:latest
           env:
             - name: KAFKA_TOPIC
               value: "farmer-messages-voice"

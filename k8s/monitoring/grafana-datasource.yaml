@@ -1,0 +1,23 @@
+# Grafana datasource ConfigMap
+# Points Grafana to the Prometheus instance in the cluster
+# Applied as part of kube-prometheus-stack Helm values or as a standalone ConfigMap
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasource-prometheus
+  namespace: kcc
+  labels:
+    grafana_datasource: "1"  # Auto-detected by Grafana sidecar
+data:
+  prometheus.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus-kube-prometheus-prometheus.monitoring:9090
+        isDefault: true
+        editable: false
+        jsonData:
+          timeInterval: "15s"

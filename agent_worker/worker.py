@@ -15,6 +15,7 @@ from redis.asyncio import Redis
 from shared.services.config import settings
 from agent_worker.consumer import start_consumer
 from agent_worker.handler import handle_message
+from agent_worker.metrics import start_metrics_server
 
 logging.basicConfig(
       level=logging.INFO,
@@ -66,6 +67,9 @@ async def main():
       # Determine which topic to consume (set via env var, default to text)
       topic = os.environ.get("KAFKA_TOPIC", settings.kafka_topic_text)
       logger.info("Worker starting for topic: %s", topic)
+
+      # Start Prometheus metrics server on port 9090
+      start_metrics_server(port=9090)
 
       # Pre-load ML models (synchronous, before starting consumer)
       preload_models()

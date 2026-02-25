@@ -65,3 +65,25 @@ old_freeze.txt
 
 # GitHub Actions
 .github/
+
+# ML models (downloaded during Docker build, not from context)
+models/
+
+# Training & evaluation (not needed at runtime)
+training/
+evaluation/
+
+# Kubernetes manifests
+k8s/
+
+# Scripts
+scripts/
+
+# Tests
+tests/
+
+# Docs & misc
+*.md
+*.png
+*.jpg
+.claude/

@@ -1,6 +1,6 @@
 apiVersion: v1
-  kind: Namespace
-  metadata:
-    name: kcc
-    labels:
-      app: kcc-agentic
+kind: Namespace
+metadata:
+  name: kcc
+  labels:
+    app: kcc-agentic

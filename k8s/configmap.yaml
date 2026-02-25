@@ -1,17 +1,17 @@
 apiVersion: v1
-  kind: ConfigMap
-  metadata:
-    name: kcc-config
-    namespace: kcc
-  data:
-    KAFKA_BOOTSTRAP_SERVERS: "kcc-event-hubs.servicebus.windows.net:9093"
-    REDIS_URL: "rediss://kcc-redis.redis.cache.windows.net:6380"
-    PINECONE_INDEX: "kisaan-crops"
-    GEMINI_MODEL: "gemini-2.0-flash"
-    GEMINI_MODEL_FAST: "gemini-2.0-flash-lite"
-    OPENWEATHER_BASE_URL: "https://api.openweathermap.org/data/2.5"
-    LOG_LEVEL: "INFO"
-    MAX_AGENT_ITERATIONS: "10"
-    AGENT_TIMEOUT_S: "120"
-    SIMILARITY_THRESHOLD: "0.15"
-    DEDUP_TTL_SECONDS: "3600"
+kind: ConfigMap
+metadata:
+  name: kcc-config
+  namespace: kcc
+data:
+  KAFKA_BOOTSTRAP_SERVERS: "redpanda.kcc.svc.cluster.local:9092"
+  REDIS_URL: "rediss://:<REDIS_ACCESS_KEY>@kcc-redis.redis.cache.windows.net:6380/0"
+  PINECONE_INDEX: "kisaan-crops"
+  GEMINI_MODEL: "gemini-2.0-flash"
+  GEMINI_MODEL_FAST: "gemini-2.0-flash-lite"
+  OPENWEATHER_BASE_URL: "https://api.openweathermap.org/data/2.5"
+  LOG_LEVEL: "INFO"
+  MAX_AGENT_ITERATIONS: "10"
+  AGENT_TIMEOUT_S: "120"
+  SIMILARITY_THRESHOLD: "0.15"
+  DEDUP_TTL_SECONDS: "3600"

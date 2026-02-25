@@ -4,3 +4,4 @@ aiokafka
 redis
 pydantic-settings
 httpx
+prometheus-fastapi-instrumentator

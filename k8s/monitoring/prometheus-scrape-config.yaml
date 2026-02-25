@@ -1,0 +1,87 @@
+# Prometheus ServiceMonitor for KCC pods
+# Requires: kube-prometheus-stack Helm chart installed
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kcc-webhook-receiver
+  namespace: kcc
+  labels:
+    app: webhook-receiver
+    release: prometheus  # Must match Helm release name
+spec:
+  selector:
+    matchLabels:
+      app: webhook-receiver
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+---
+# Workers expose metrics on port 9090 (not via a K8s Service by default)
+# Option 1: Add a headless service for worker metrics
+apiVersion: v1
+kind: Service
+metadata:
+  name: text-worker-metrics
+  namespace: kcc
+  labels:
+    app: text-worker
+spec:
+  clusterIP: None
+  selector:
+    app: text-worker
+  ports:
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: image-worker-metrics
+  namespace: kcc
+  labels:
+    app: image-worker
+spec:
+  clusterIP: None
+  selector:
+    app: image-worker
+  ports:
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: voice-worker-metrics
+  namespace: kcc
+  labels:
+    app: voice-worker
+spec:
+  clusterIP: None
+  selector:
+    app: voice-worker
+  ports:
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kcc-workers
+  namespace: kcc
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: [text-worker, image-worker, voice-worker]
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s

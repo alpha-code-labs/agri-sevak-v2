@@ -1,0 +1,167 @@
+{
+  "dashboard": {
+    "title": "KCC Agentic AI — Operations Dashboard",
+    "uid": "kcc-ops-dashboard",
+    "tags": ["kcc", "agentic-ai"],
+    "timezone": "Asia/Kolkata",
+    "refresh": "30s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Message Throughput (per minute)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "targets": [
+          {
+            "expr": "sum(rate(kcc_messages_processed_total[5m])) by (status) * 60",
+            "legendFormat": "{{ status }}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "msg/min",
+            "color": { "mode": "palette-classic" }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Kafka Consumer Lag",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+        "targets": [
+          {
+            "expr": "sum(kafka_consumergroup_lag{consumergroup=\"agent-workers\"}) by (topic)",
+            "legendFormat": "{{ topic }}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "messages",
+            "color": { "mode": "palette-classic" },
+            "thresholds": {
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 10, "color": "yellow" },
+                { "value": 50, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Agent Latency (p50 / p95 / p99)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(kcc_agent_latency_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p50"
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(kcc_agent_latency_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p95"
+          },
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(kcc_agent_latency_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p99"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "color": { "mode": "palette-classic" },
+            "thresholds": {
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 10, "color": "yellow" },
+                { "value": 30, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Gemini API Calls (by status)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+        "targets": [
+          {
+            "expr": "sum(rate(kcc_gemini_calls_total[5m])) by (model, status) * 60",
+            "legendFormat": "{{ model }} — {{ status }}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "calls/min",
+            "color": { "mode": "palette-classic" }
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "RAG Hit vs Gemini Fallback",
+        "type": "piechart",
+        "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
+        "targets": [
+          {
+            "expr": "sum(increase(kcc_rag_results_total[1h])) by (source)",
+            "legendFormat": "{{ source }}"
+          }
+        ],
+        "options": {
+          "pieType": "donut",
+          "legend": { "displayMode": "table", "placement": "right" }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Safety Triggers (last 1h)",
+        "type": "stat",
+        "gridPos": { "h": 8, "w": 8, "x": 8, "y": 16 },
+        "targets": [
+          {
+            "expr": "sum(increase(kcc_safety_triggers_total[1h])) by (layer)",
+            "legendFormat": "{{ layer }}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "fixed", "fixedColor": "red" },
+            "thresholds": {
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 1, "color": "orange" },
+                { "value": 5, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 7,
+        "title": "Tool Usage (per minute)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
+        "targets": [
+          {
+            "expr": "sum(rate(kcc_tool_calls_total[5m])) by (tool_name) * 60",
+            "legendFormat": "{{ tool_name }}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "calls/min",
+            "color": { "mode": "palette-classic" }
+          }
+        }
+      }
+    ]
+  }
+}

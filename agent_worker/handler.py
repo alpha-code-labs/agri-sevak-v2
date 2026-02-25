@@ -20,6 +20,10 @@ from shared.services.graph_api import GraphAPI
 from shared.services.agent import run_agent
 from shared.services.safety_audit import safety_audit
 from shared.services.blob_storage import BlobStorage
+from agent_worker.metrics import (
+    messages_processed, tool_calls, rag_results,
+    safety_triggers, agent_latency,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -163,13 +167,33 @@ async def _run_agent_pipeline(
 
       except Exception as e:
           logger.error("Agent pipeline failed: %s", e, exc_info=True)
+          messages_processed.labels(topic="agent_pipeline", status="error").inc()
           final_response = (
               "किसान भाई, तकनीकी समस्या के कारण जवाब देने में दिक्कत हो रही है। "
               "कृपया कुछ देर बाद दोबारा पूछें या अपने नजदीकी KVK से संपर्क करें।"
           )
 
       duration_ms = (time.perf_counter() - start) * 1000
+      duration_s = duration_ms / 1000.0
       logger.info("Agent pipeline completed in %.0fms for user=%s", duration_ms, user_id)
+
+      # Record Prometheus metrics
+      agent_latency.observe(duration_s)
+      messages_processed.labels(topic="agent_pipeline", status="success").inc()
+
+      # Track tool calls
+      for tc in session.tool_call_log:
+          tool_calls.labels(tool_name=tc["tool"]).inc()
+          # Track RAG source
+          if tc["tool"] == "rag_retriever":
+              source = tc.get("result", {}).get("source", "unknown") if isinstance(tc.get("result"), dict) else "unknown"
+              rag_results.labels(source=source).inc()
+
+      # Track safety triggers
+      if audited.get("local_scan"):
+          safety_triggers.labels(layer="local_scan").inc(len(audited["local_scan"]))
+      if audited.get("post_audit_scan"):
+          safety_triggers.labels(layer="gemini_auditor").inc(len(audited["post_audit_scan"]))
 
       # Send the final response to the farmer
       await graph.send_text(phone_number_id, user_id, final_response)

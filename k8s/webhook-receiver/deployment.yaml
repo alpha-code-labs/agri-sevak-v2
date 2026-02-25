@@ -6,7 +6,7 @@ metadata:
   labels:
     app: webhook-receiver
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: webhook-receiver
@@ -17,9 +17,9 @@ spec:
     spec:
       containers:
         - name: webhook-receiver
-          image: kccregistry.azurecr.io/webhook-receiver:latest
+          image: kissanacr.azurecr.io/webhook-receiver:latest
           ports:
-            - containerPort: 8000
+            - containerPort: 8080
           envFrom:
             - configMapRef:
                 name: kcc-config
@@ -35,12 +35,12 @@ spec:
           readinessProbe:
             httpGet:
               path: /health
-              port: 8000
+              port: 8080
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /health
-              port: 8000
+              port: 8080
             initialDelaySeconds: 10
             periodSeconds: 30

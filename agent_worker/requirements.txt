@@ -26,3 +26,6 @@ rapidfuzz
 
 # Google Gemini SDK
 google-genai
+
+# Monitoring
+prometheus-client

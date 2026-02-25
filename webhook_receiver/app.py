@@ -8,6 +8,7 @@ from shared.services.config import settings
 from shared.services.dedup import is_first_seen
 from webhook_receiver.security import verify_hmac_signature
 from webhook_receiver.producer import route_message
+from webhook_receiver.metrics import instrumentator
 
 
 producer: AIOKafkaProducer | None = None
@@ -26,6 +27,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+instrumentator.instrument(app).expose(app, endpoint="/metrics")
 
 
 @app.get("/webhook")
