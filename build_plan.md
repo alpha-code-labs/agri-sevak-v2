@@ -430,3 +430,47 @@ After each phase, verify independently:
 - **Phase 5:** Full local end-to-end: send webhook → Kafka → worker processes → WhatsApp response logged
 - **Phase 6:** Evaluation scorecard generated. Safety compliance = 100%. Overall score ≥80%. No regressions on re-run.
 - **Phase 7-11:** Deploy once to AKS, send real WhatsApp message, receive response, then shut down.
+
+---
+
+## Phase 13: Final Integration & Go-Live
+
+### Step 13.1 — Walk through the entire flow
+Review the complete message lifecycle conversationally: WhatsApp message → Meta webhook → webhook receiver → HMAC verify → Redis dedup → Kafka produce → agent worker consume → state machine → LangGraph agent (tool calls, RAG, safety audit) → WhatsApp response. Identify any gaps, missing edge cases, or code issues. Make fixes as needed.
+
+**Known fix — Post-answer follow-up flow:**
+Currently after the agent sends the answer, the session silently resets to GREETING. Farmer has to re-select district to ask another question. Fix:
+- After sending the agent's response, send: "Kya aur koi samasya hai?" with buttons: `Haan, aur poochein 🔄` | `Nahi, dhanyavaad 🙏`
+- "Haan" → set state to QUERY_COLLECT (keep same district, clear inputs) → farmer asks next question without re-selecting district
+- "Nahi" → send "Dhanyavaad! Jai Kisan 🌾" → reset session to GREETING
+- Add new state `SessionState.POST_ANSWER` to handle this
+- Files: `redis_session.py` (new state), `state_machine.py` (POST_ANSWER handler), `handler.py` (send follow-up buttons after agent response instead of silent reset)
+
+### Step 13.2 — Add smart location pin request for weather
+When a farmer mentions weather during query collection, the bot proactively asks them to drop a location pin for accurate results before sending the query for processing.
+
+**Flow:**
+- Farmer sends input in QUERY_COLLECT (e.g. "aaj mausam kaisa hai")
+- State machine scans input for weather keywords (mausam, barish, temperature, weather, tufaan, andhi, garmi, sardi, etc.)
+- If weather keyword detected → transition to new WEATHER_PIN_REQUEST state
+  - Bot sends: "Sahi mausam ke liye apna location pin bhejein 📍"
+  - Buttons: `Pin bhejein 📍` | `Skip karein ⏭️`
+- If farmer drops a pin → store lat/lon in session → move to QUERY_CONFIRM
+- If farmer taps "Skip" → move to QUERY_CONFIRM (will use district center coordinates as fallback)
+
+**Files to change:**
+1. `shared/services/redis_session.py` — Add `location_lat: float | None` and `location_lon: float | None` fields to Session. Add `SessionState.WEATHER_PIN_REQUEST`.
+2. `shared/services/message_parser.py` — Parse `type: location` messages from WhatsApp payload (extract latitude, longitude).
+3. `shared/services/state_machine.py` — Add weather keyword detection in QUERY_COLLECT. Add WEATHER_PIN_REQUEST state handler (location received → save coords, skip → proceed without).
+4. `shared/services/tools/weather_fetcher.py` — Accept optional `lat`/`lon` parameters. If provided, use exact coordinates. If not, fall back to `DISTRICT_COORDS[district]`.
+5. `agent_worker/handler.py` — Pass `location_lat`/`location_lon` from session into the agent state.
+6. `shared/services/agent.py` — Pass location coordinates through to weather_fetcher tool context.
+
+### Step 13.3 — Redeploy to AKS
+Rebuild Docker images with all fixes from 13.1 and 13.2, push to ACR, rolling update on AKS.
+
+### Step 13.4 — Create Meta app and test phone number
+Set up a new WhatsApp Business app in Meta Developer console. Create a test phone number. Configure webhook URL (requires HTTPS — set up cert-manager + Let's Encrypt + Azure DNS label).
+
+### Step 13.5 — Connect Azure deployment to WhatsApp and test
+Point Meta webhook to the AKS HTTPS endpoint. Send a real WhatsApp message. Verify the full round-trip: message received → processed → response sent back on WhatsApp.

@@ -11,7 +11,9 @@ class SessionState(str, Enum):
       DISTRICT_SELECT = "DISTRICT_SELECT"
       QUERY_COLLECT = "QUERY_COLLECT"
       QUERY_CONFIRM = "QUERY_CONFIRM"
+      WEATHER_PIN_REQUEST = "WEATHER_PIN_REQUEST"
       AGENT_PROCESSING = "AGENT_PROCESSING"
+      POST_ANSWER = "POST_ANSWER"
 
 
 class Session(BaseModel):
@@ -21,6 +23,8 @@ class Session(BaseModel):
       district: str | None = None
       inputs: list[dict] = []
       input_count: int = 0
+      location_lat: float | None = None
+      location_lon: float | None = None
       agent_memory: dict = {}
       tool_call_log: list[dict] = []
       created_at: float = 0.0

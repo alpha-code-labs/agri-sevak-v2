@@ -39,7 +39,7 @@ SYSTEM_PROMPT = """You are a Senior Agronomist at Haryana Agricultural Universit
   3. TOOL USAGE:
      - First use crop_detector to identify the crop from the farmer's input.
      - Then use rag_retriever with the detected crop name to find verified knowledge.
-     - Use weather_fetcher if the farmer asks about weather or if weather context would help your advice.
+     - Use weather_fetcher if the farmer asks about weather or if weather context would help your advice. {location_hint}
      - Use image_analyzer if the farmer sent a photo (blob_name will be in their input).
      - Use safety_checker to verify your advice doesn't include banned chemicals.
   4. WHATSAPP FORMATTING:
@@ -131,6 +131,8 @@ async def run_agent(
       user_id: str = "",
       phone_number_id: str = "",
       crop_name: str = "",
+      location_lat: float | None = None,
+      location_lon: float | None = None,
   ) -> dict:
       """
       Run the full agent pipeline.
@@ -138,8 +140,14 @@ async def run_agent(
       """
       start = time.perf_counter()
 
+      # Build location hint for system prompt
+      if location_lat is not None and location_lon is not None:
+          location_hint = f"The farmer shared their exact location: lat={location_lat}, lon={location_lon}. Pass these to weather_fetcher."
+      else:
+          location_hint = "No exact location shared — use district name for weather."
+
       # Build initial messages
-      system_msg = SystemMessage(content=SYSTEM_PROMPT.format(district=district))
+      system_msg = SystemMessage(content=SYSTEM_PROMPT.format(district=district, location_hint=location_hint))
       human_msg = HumanMessage(content="\n".join(user_inputs))
 
       initial_state: AgentState = {

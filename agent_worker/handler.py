@@ -137,6 +137,8 @@ async def _run_agent_pipeline(
               session_id=session.session_id,
               user_id=user_id,
               phone_number_id=phone_number_id,
+              location_lat=session.location_lat,
+              location_lon=session.location_lon,
           )
           response = agent_result["response"]
 
@@ -198,8 +200,17 @@ async def _run_agent_pipeline(
       # Send the final response to the farmer
       await graph.send_text(phone_number_id, user_id, final_response)
 
-      # Restart the flow — reset to GREETING for the next conversation
-      session.state = SessionState.GREETING
+      # Post-answer follow-up — ask if farmer has more questions
+      session.state = SessionState.POST_ANSWER
       session.inputs = []
       session.input_count = 0
       await save_session(redis, session, ttl_s=settings.session_ttl_seconds)
+
+      await graph.send_interactive_buttons(
+          phone_number_id, user_id,
+          body_text="Kya aur koi samasya hai?",
+          buttons=[
+              {"type": "reply", "reply": {"id": "post_yes", "title": "Haan, aur poochein 🔄"}},
+              {"type": "reply", "reply": {"id": "post_no", "title": "Nahi, dhanyavaad 🙏"}},
+          ],
+      )

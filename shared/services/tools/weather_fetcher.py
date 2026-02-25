@@ -70,13 +70,16 @@ def _format_forecast(data: dict, district: str) -> str:
 
 
 @tool
-async def weather_fetcher(district: str) -> str:
-      """Get 7-day weather forecast for a Haryana district in Hindi."""
-      coords = DISTRICT_COORDS.get(district)
-      if not coords:
-          return f"❌ जिला '{district}' नहीं मिला। कृपया सही जिला बताएं।"
-
-      lat, lon = coords
+async def weather_fetcher(district: str, lat: float | None = None, lon: float | None = None) -> str:
+      """Get 7-day weather forecast for a Haryana district in Hindi. If lat/lon are provided, uses exact coordinates instead of district center."""
+      if lat is not None and lon is not None:
+          # Use exact coordinates from farmer's location pin
+          pass
+      else:
+          coords = DISTRICT_COORDS.get(district)
+          if not coords:
+              return f"❌ जिला '{district}' नहीं मिला। कृपया सही जिला बताएं।"
+          lat, lon = coords
       url = "https://api.openweathermap.org/data/3.0/onecall"
       params = {
           "lat": lat,
