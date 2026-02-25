@@ -1,0 +1,24 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: voice-worker-scaler
+  namespace: kcc
+  labels:
+    app: voice-worker
+spec:
+  scaleTargetRef:
+    name: voice-worker
+  minReplicaCount: 1
+  maxReplicaCount: 10
+  pollingInterval: 15
+  cooldownPeriod: 60
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: kcc-event-hubs.servicebus.windows.net:9093
+        consumerGroup: agent-workers
+        topic: farmer-messages-voice
+        lagThreshold: "5"
+        offsetResetPolicy: earliest
+      authenticationRef:
+        name: kcc-kafka-auth

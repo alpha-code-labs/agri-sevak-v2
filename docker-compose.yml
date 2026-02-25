@@ -1,0 +1,86 @@
+services:                                                                                                                                                                                                                                                                  
+    # ── Infrastructure ────────────────────────────────────────                                                                                                                                                                                                             
+    redpanda:                                                                                                                                                                                                                                                                
+      image: redpandadata/redpanda:latest                                                                                                                                                                                                                                    
+      command:                                                                                                                                                                                                                                                               
+        - redpanda start                                                                                                                                                                                                                                                     
+        - --smp 1                                                                                                                                                                                                                                                            
+        - --memory 512M                                                            
+        - --overprovisioned
+        - --kafka-addr PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
+        - --advertise-kafka-addr PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092
+      ports:
+        - "9092:9092"
+        - "29092:29092"
+        - "8081:8081"
+        - "9644:9644"
+
+    console:
+      image: redpandadata/console:latest
+      ports:
+        - "8888:8080"
+      environment:
+        KAFKA_BROKERS: redpanda:29092
+      depends_on:
+        - redpanda
+
+    redis:
+      image: redis:7-alpine
+      ports:
+        - "6379:6379"
+      command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+
+    # ── Webhook Receiver ──────────────────────────────────────
+    webhook-receiver:
+      build:
+        context: .
+        dockerfile: webhook_receiver/Dockerfile
+      ports:
+        - "8080:8080"
+      env_file: .env
+      environment:
+        KAFKA_BOOTSTRAP_SERVERS: redpanda:29092
+        REDIS_URL: redis://redis:6379/0
+      depends_on:
+        - redpanda
+        - redis
+
+    # ── Agent Workers ─────────────────────────────────────────
+    text-worker:
+      build:
+        context: .
+        dockerfile: agent_worker/Dockerfile
+      env_file: .env
+      environment:
+        KAFKA_TOPIC: farmer-messages-text
+        KAFKA_BOOTSTRAP_SERVERS: redpanda:29092
+        REDIS_URL: redis://redis:6379/0
+      depends_on:
+        - redpanda
+        - redis
+
+    image-worker:
+      build:
+        context: .
+        dockerfile: agent_worker/Dockerfile
+      env_file: .env
+      environment:
+        KAFKA_TOPIC: farmer-messages-image
+        KAFKA_BOOTSTRAP_SERVERS: redpanda:29092
+        REDIS_URL: redis://redis:6379/0
+      depends_on:
+        - redpanda
+        - redis
+
+    voice-worker:
+      build:
+        context: .
+        dockerfile: agent_worker/Dockerfile
+      env_file: .env
+      environment:
+        KAFKA_TOPIC: farmer-messages-voice
+        KAFKA_BOOTSTRAP_SERVERS: redpanda:29092
+        REDIS_URL: redis://redis:6379/0
+      depends_on:
+        - redpanda
+        - redis

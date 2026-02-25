@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: image-worker
+  namespace: kcc
+  labels:
+    app: image-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: image-worker
+  template:
+    metadata:
+      labels:
+        app: image-worker
+    spec:
+      containers:
+        - name: image-worker
+          image: kccregistry.azurecr.io/agent-worker:latest
+          env:
+            - name: KAFKA_TOPIC
+              value: "farmer-messages-image"
+          envFrom:
+            - configMapRef:
+                name: kcc-config
+            - secretRef:
+                name: kcc-secrets
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "2Gi"
+            limits:
+              cpu: "1000m"
+              memory: "3Gi"
+          readinessProbe:
+            exec:
+              command: ["python", "-c", "import torch; print('ready')"]
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          livenessProbe:
+            exec:
+              command: ["python", "-c", "print('alive')"]
+            initialDelaySeconds: 90
+            periodSeconds: 30

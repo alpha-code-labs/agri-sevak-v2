@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: webhook-receiver
+  namespace: kcc
+  labels:
+    app: webhook-receiver
+spec:
+  type: ClusterIP
+  selector:
+    app: webhook-receiver
+  ports:
+    - port: 80
+      targetPort: 8000
+      protocol: TCP

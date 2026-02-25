@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voice-worker
+  namespace: kcc
+  labels:
+    app: voice-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: voice-worker
+  template:
+    metadata:
+      labels:
+        app: voice-worker
+    spec:
+      containers:
+        - name: voice-worker
+          image: kccregistry.azurecr.io/agent-worker:latest
+          env:
+            - name: KAFKA_TOPIC
+              value: "farmer-messages-voice"
+          envFrom:
+            - configMapRef:
+                name: kcc-config
+            - secretRef:
+                name: kcc-secrets
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+          readinessProbe:
+            exec:
+              command: ["python", "-c", "import torch; print('ready')"]
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          livenessProbe:
+            exec:
+              command: ["python", "-c", "print('alive')"]
+            initialDelaySeconds: 90
+            periodSeconds: 30

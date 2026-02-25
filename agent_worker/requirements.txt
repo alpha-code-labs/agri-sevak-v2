@@ -1,0 +1,28 @@
+# Core                                                                                                                                                                                                                                                                     
+langgraph                                                                                                                                                                                                                                                                  
+langchain-core                                                                                                                                                                                                                                                             
+langchain-google-genai                                                                                                                                                                                                                                                     
+pydantic-settings                                                                                                                                                                                                                                                          
+                                                                                                                                                                                                                                                                             
+# ML                                                                                                                                                                                                                                                                       
+sentence-transformers                                                                                                                                                                                                                                                      
+torch
+transformers
+accelerate
+
+# Vector DB
+pinecone
+
+# Messaging
+aiokafka
+
+# Storage
+redis
+azure-storage-blob
+httpx
+
+# Fuzzy matching
+rapidfuzz
+
+# Google Gemini SDK
+google-genai

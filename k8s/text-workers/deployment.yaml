@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: text-worker
+  namespace: kcc
+  labels:
+    app: text-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: text-worker
+  template:
+    metadata:
+      labels:
+        app: text-worker
+    spec:
+      containers:
+        - name: text-worker
+          image: kccregistry.azurecr.io/agent-worker:latest
+          env:
+            - name: KAFKA_TOPIC
+              value: "farmer-messages-text"
+          envFrom:
+            - configMapRef:
+                name: kcc-config
+            - secretRef:
+                name: kcc-secrets
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+          readinessProbe:
+            exec:
+              command: ["python", "-c", "import torch; print('ready')"]
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          livenessProbe:
+            exec:
+              command: ["python", "-c", "print('alive')"]
+            initialDelaySeconds: 90
+            periodSeconds: 30

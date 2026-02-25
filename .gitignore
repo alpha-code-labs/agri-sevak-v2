@@ -17,9 +17,6 @@ env/
 .env
 .env.*
 
-# Azure deployment YAML (contains secrets in plaintext)
-kissan-fast-api.yaml
-
 # IDE / editor
 .vscode/
 .idea/
@@ -40,25 +37,51 @@ Thumbs.db
 build/
 dist/
 
-# Local data (runtime data from Azure File Share, not for repo)
-# Note: data/banned_pesticides.json IS tracked — it's the safety blocklist
-data/crops.json
-data/Varieties and Sowing Time.json
-data/sessions/
-data/indexing_progress.json
+# Claude Code session data
+.claude/
 
-# Local ChromaDB
+# Trained ML models (large binaries — downloaded during Docker build)
+models/
+
+# Evaluation results (local runs, not tracked)
+evaluation/results/
+
+# Old monolith files (kept locally for reference, not in new repo)
+/services/
+/data/
 chroma_db/
 *.sqlite3
-
-# Generated images
 generated_images/
+kissan-fast-api.yaml
+old_freeze.txt
+/app.py
+/forwarder.py
+/Dockerfile
+/requirements.txt
+
+# Personal / planning docs (not project code)
+jd.md
+resume.md
+interview_questions.md
+last_checkpoint.md
+last_conversation.md
+revamp.md
+assumptions.md
+knowledge.md
+project.md
+architecture.md
+architecture_*.md
+final_architecture.md
+gemini_call_analysis.md
+
+# Temp files
+*.png
 
 # Node / frontend
 node_modules/
 
-# PDF source (extracted into JSON already)
+# PDF source
 *.pdf
 
-# Old freeze file
-old_freeze.txt
+# Gemini responses corpus (large, indexed into Pinecone)
+gemini_responses/
