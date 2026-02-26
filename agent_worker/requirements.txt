@@ -1,13 +1,13 @@
-# Core                                                                                                                                                                                                                                                                     
-langgraph                                                                                                                                                                                                                                                                  
-langchain-core                                                                                                                                                                                                                                                             
-langchain-google-genai                                                                                                                                                                                                                                                     
-pydantic-settings                                                                                                                                                                                                                                                          
-                                                                                                                                                                                                                                                                             
-# ML                                                                                                                                                                                                                                                                       
-sentence-transformers                                                                                                                                                                                                                                                      
+# Core
+langgraph
+langchain-core
+langchain-google-genai
+pydantic-settings
+
+# ML (pinned to avoid resolution issues on cross-platform builds)
+sentence-transformers>=5.0
+transformers>=5.0
 torch
-transformers
 accelerate
 
 # Vector DB
