@@ -35,9 +35,10 @@ async def run_single(entry: dict) -> dict:
       start = time.perf_counter()
 
       try:
-          # Run the agent
+          # Run the agent — support multi-input entries
+          user_inputs = entry.get("inputs", [entry["query"]])
           agent_result = await run_agent(
-              user_inputs=[entry["query"]],
+              user_inputs=user_inputs,
               district=entry["district"],
           )
 

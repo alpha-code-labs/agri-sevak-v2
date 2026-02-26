@@ -6,8 +6,8 @@ from shared.services.config import settings
 TOPIC_MAP = {
       "text": settings.kafka_topic_text,
       "interactive": settings.kafka_topic_text,
-      "image": settings.kafka_topic_image,
-      "audio": settings.kafka_topic_voice,
+      "image": settings.kafka_topic_text,
+      "audio": settings.kafka_topic_text,
   }
 
 

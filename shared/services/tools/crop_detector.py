@@ -36,9 +36,14 @@ def fuzzy_detect(text: str, threshold: int = 70) -> dict | None:
       """Layer 2: RapidFuzz fuzzy matching against all synonyms."""
       text_lower = text.lower().strip()
 
-      # Exact match first
+      # Exact match on full text first
       if text_lower in SYNONYM_TO_MASTER:
           return {"crop_name": SYNONYM_TO_MASTER[text_lower], "source": "exact", "confidence": 1.0}
+
+      # Exact match on individual words
+      for word in text_lower.split():
+          if word in SYNONYM_TO_MASTER:
+              return {"crop_name": SYNONYM_TO_MASTER[word], "source": "exact", "confidence": 1.0}
 
       # Fuzzy match
       result = process.extractOne(text_lower, ALL_SYNONYMS, scorer=fuzz.token_sort_ratio)

@@ -35,13 +35,38 @@ class GeminiPool:
                       continue
                   raise
 
+      async def generate_audio(self, model: str, audio_bytes: bytes,
+                              text_prompt: str, mime_type: str = "audio/ogg",
+                              temperature: float = 0) -> str:
+          """Audio transcription/understanding via Gemini multimodal."""
+          from google.genai.types import Part, Content
+
+          audio_part = Part.from_bytes(data=audio_bytes, mime_type=mime_type)
+          text_part = Part.from_text(text=text_prompt)
+          content = Content(parts=[audio_part, text_part])
+
+          for attempt in range(len(self._clients)):
+              client = await self._next_client()
+              try:
+                  resp = await asyncio.to_thread(
+                      client.models.generate_content,
+                      model=model,
+                      contents=content,
+                      config={"temperature": temperature},
+                  )
+                  return (resp.text or "").strip()
+              except Exception as e:
+                  if "429" in str(e) and attempt < len(self._clients) - 1:
+                      continue
+                  raise
+
       async def generate_multimodal(self, model: str, image_bytes: bytes,
                                     text_prompt: str, temperature: float = 0) -> str:
           """Multimodal generation (image + text) with round-robin and 429 failover."""
           from google.genai.types import Part, Content
 
           image_part = Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
-          text_part = Part.from_text(text_prompt)
+          text_part = Part.from_text(text=text_prompt)
           content = Content(parts=[image_part, text_part])
 
           for attempt in range(len(self._clients)):

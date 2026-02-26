@@ -66,8 +66,9 @@ old_freeze.txt
 # GitHub Actions
 .github/
 
-# ML models (downloaded during Docker build, not from context)
-models/
+# ML models — only exclude checkpoints, keep final weights
+models/crop_classifier/checkpoint*/
+models/crop_classifier/runs/
 
 # Training & evaluation (not needed at runtime)
 training/

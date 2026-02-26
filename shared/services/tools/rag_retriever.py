@@ -1,9 +1,11 @@
 """
-  Step 3.6 — RAG Retriever Tool
-  Encode query locally → search Pinecone → safety scan results.
-  If no results → Gemini generative fallback + auditor pass.
-  """
+Step 3.6 — RAG Retriever Tool (upgraded with FOUND/MISSING logic)
+Encode query locally → search Pinecone → tag as FOUND or MISSING.
+FOUND: return evidence with safety warnings injected.
+MISSING: use RAG_GROUNDED_ADVICE prompt for grounded generation.
+"""
 
+import json
 import logging
 from functools import lru_cache
 
@@ -12,7 +14,10 @@ from sentence_transformers import SentenceTransformer
 from langchain_core.tools import tool
 
 from shared.services.config import settings
-from shared.services.tools.safety_checker import scan_text_for_banned
+from shared.services.tools.safety_checker import (
+    scan_text_for_banned,
+    get_banned_chemicals_for_crop,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -20,148 +25,192 @@ SIMILARITY_THRESHOLD = 0.15
 TOP_K = 3
 
 
+# ── RAG Grounded Advice Prompt (from old system) ─────────────────────────
+
+RAG_GROUNDED_ADVICE_PROMPT = """You are a Senior Agronomist at Haryana Agricultural University (HAU, Hisar).
+Your task is to provide agricultural advice to an Indian farmer.
+
+STRICT LANGUAGE RULE:
+- EVERY WORD of the response must be in HINDI (Devanagari script).
+- Translate all English 'queries' and English 'evidence' into professional, easy-to-understand Hindi.
+- Keep technical chemical names in Hindi script (e.g., 'Imidacloprid' as 'इमिडाक्लोप्रिड').
+
+OUTPUT STRUCTURE:
+1. Introduction: Always start with "किसान भाई, यह रहा आपके सवालों का उत्तर:"
+
+2. Conditional Headers:
+   - IF ALL queries have status 'FOUND': Do NOT use any section headers. Just list Q&A.
+   - IF THERE is a MIX of 'FOUND' and 'MISSING':
+     * Use Header: "**भाग अ: प्रमाणित जानकारी**" for FOUND entries.
+     * Use Header: "**भाग ब: विशेषज्ञ शोध**" for MISSING entries.
+
+3. Content Logic:
+   - For 'FOUND': Translate the provided evidence accurately into Hindi.
+   - For 'MISSING': Use your expert internal knowledge to write a factual answer in Hindi.
+
+4. SAFETY — BANNED PESTICIDES:
+   - Some RAG results may contain a "safety_warnings" field.
+   - If present, these chemicals are BANNED by CIB&RC India for this crop.
+   - You MUST NOT include any banned chemical in your response.
+   - Instead, suggest a safe, registered alternative for the same problem.
+   - If no alternative is known, advise the farmer to consult HAU/KVK experts.
+
+5. Formatting:
+   - Use bullet points for dosages and steps."""
+
+
 @lru_cache(maxsize=1)
 def _get_model() -> SentenceTransformer:
-      """Load sentence-transformer once, cache forever."""
-      return SentenceTransformer(settings.sentence_transformer_model)
+    """Load sentence-transformer once, cache forever."""
+    return SentenceTransformer(settings.sentence_transformer_model)
 
 
 @lru_cache(maxsize=1)
 def _get_index():
-      """Connect to Pinecone index once, cache forever."""
-      pc = Pinecone(api_key=settings.pinecone_api_key)
-      return pc.Index(settings.pinecone_index_name)
+    """Connect to Pinecone index once, cache forever."""
+    pc = Pinecone(api_key=settings.pinecone_api_key)
+    return pc.Index(settings.pinecone_index_name)
 
 
 def _normalize_crop(crop_name: str) -> str:
-      """Normalize crop name to match Pinecone metadata format."""
-      return crop_name.strip().lower().replace(" ", "_")
+    """Normalize crop name to match Pinecone metadata format."""
+    return crop_name.strip().lower().replace(" ", "_")
 
 
 def _search_pinecone(query: str, crop_name: str) -> list[dict]:
-      """Encode query locally and search Pinecone with crop filter."""
-      model = _get_model()
-      query_vector = model.encode(query).tolist()
+    """Encode query locally and search Pinecone with crop filter."""
+    model = _get_model()
+    query_vector = model.encode(query).tolist()
 
-      index = _get_index()
-      crop_tag = _normalize_crop(crop_name)
+    index = _get_index()
+    crop_tag = _normalize_crop(crop_name)
 
-      results = index.query(
-          vector=query_vector,
-          top_k=TOP_K,
-          filter={"crop": crop_tag},
-          include_metadata=True,
-      )
+    results = index.query(
+        vector=query_vector,
+        top_k=TOP_K,
+        filter={"crop": crop_tag},
+        include_metadata=True,
+    )
 
-      matches = []
-      for match in results.get("matches", []):
-          score = match.get("score", 0.0)
-          if score >= SIMILARITY_THRESHOLD:
-              metadata = match.get("metadata", {})
-              matches.append({
-                  "id": match["id"],
-                  "score": round(score, 4),
-                  "text": metadata.get("text_full", metadata.get("text_preview", "")),
-                  "crop": metadata.get("crop", ""),
-              })
+    matches = []
+    for match in results.get("matches", []):
+        score = match.get("score", 0.0)
+        if score >= SIMILARITY_THRESHOLD:
+            metadata = match.get("metadata", {})
+            matches.append({
+                "id": match["id"],
+                "score": round(score, 4),
+                "text": metadata.get("text_full", metadata.get("text_preview", "")),
+                "crop": metadata.get("crop", ""),
+            })
 
-      return matches
-
-
-async def _gemini_fallback(query: str, crop_name: str) -> str:
-      """When RAG has no results, use Gemini to generate an answer."""
-      from shared.services.gemini_pool import GeminiPool
-
-      keys = settings.gemini_keys_list
-      if not keys:
-          return ""
-
-      pool = GeminiPool(api_keys=keys)
-      prompt = (
-          f"You are a Senior Agronomist at Haryana Agricultural University (HAU, Hisar).\n"
-          f"A farmer growing {crop_name} asked: \"{query}\"\n\n"
-          f"Provide scientifically verified advice in Hindi. "
-          f"Include specific product names, dosages, and application methods where relevant. "
-          f"If unsure, say so clearly."
-      )
-
-      try:
-          return await pool.generate(model=settings.gemini_model_quality, contents=prompt)
-      except Exception as e:
-          logger.error(f"Gemini fallback failed: {e}")
-          return ""
+    return matches
 
 
-async def _gemini_auditor(generated_text: str, crop_name: str) -> dict:
-      """Audit Gemini-generated text for safety — check for banned chemicals."""
-      from shared.services.gemini_pool import GeminiPool
+def _inject_safety_warnings(evidence_texts: list[str], crop_name: str) -> list[str]:
+    """Scan evidence for banned chemicals and return warning strings."""
+    warnings = []
+    for text in evidence_texts:
+        banned = scan_text_for_banned(text, crop_name)
+        for b in banned:
+            name = b["chemical_name"]
+            warnings.append(
+                f"⚠️ BANNED: {name} is banned for {crop_name} per CIB&RC India. "
+                f"Do NOT recommend this chemical. Suggest a safe, registered alternative instead."
+            )
+    # Deduplicate
+    return list(dict.fromkeys(warnings))
 
-      # Layer 1: Local JSON scan (fast, free)
-      banned_found = scan_text_for_banned(generated_text, crop_name)
 
-      # Layer 2: Gemini auditor (catches what JSON scan might miss)
-      keys = settings.gemini_keys_list
-      gemini_audit = ""
-      if keys:
-          pool = GeminiPool(api_keys=keys)
-          prompt = (
-              f"You are a pesticide safety auditor for Indian agriculture.\n"
-              f"Review this advice given to a farmer growing {crop_name}:\n\n"
-              f"---\n{generated_text}\n---\n\n"
-              f"Check if ANY banned, restricted, or withdrawn pesticide in India is recommended.\n"
-              f"If you find any, list them. If the advice is safe, reply: SAFE"
-          )
-          try:
-              gemini_audit = await pool.generate(
-                  model=settings.gemini_model_fast, contents=prompt
-              )
-          except Exception as e:
-              logger.error(f"Gemini auditor failed: {e}")
+async def _grounded_generation(rag_result: dict, crop_name: str) -> str:
+    """Use RAG_GROUNDED_ADVICE prompt to generate a grounded response."""
+    from shared.services.gemini_pool import GeminiPool
 
-      return {
-          "banned_chemicals_found": banned_found,
-          "gemini_audit": gemini_audit.strip(),
-          "is_safe": len(banned_found) == 0 and "SAFE" in gemini_audit.upper(),
-      }
+    keys = settings.gemini_keys_list
+    if not keys:
+        return ""
+
+    pool = GeminiPool(api_keys=keys)
+    payload = json.dumps(rag_result, ensure_ascii=False)
+    prompt = f"{RAG_GROUNDED_ADVICE_PROMPT}\n\nRAG_RESULTS_JSON:\n{payload}"
+
+    try:
+        return await pool.generate(
+            model=settings.gemini_model_quality,
+            contents=prompt,
+            temperature=0,
+        )
+    except Exception as e:
+        logger.error("Grounded generation failed for crop=%s: %s", crop_name, e)
+        return ""
 
 
 @tool
 async def rag_retriever(query: str, crop_name: str) -> dict:
-      """Retrieve agricultural knowledge for a crop query. Searches the RAG knowledge base and falls back to Gemini if needed."""
+    """Retrieve agricultural knowledge for a crop query. Searches the RAG knowledge base.
+    Returns FOUND results with evidence, or MISSING with Gemini-generated grounded advice."""
 
-      # 1. Search Pinecone
-      matches = _search_pinecone(query, crop_name)
+    # 1. Search Pinecone
+    matches = _search_pinecone(query, crop_name)
 
-      if matches:
-          # Found in RAG corpus — run safety scan on the evidence
-          combined_text = "\n".join(m["text"] for m in matches)
-          banned_found = scan_text_for_banned(combined_text, crop_name)
+    if matches:
+        # ── FOUND path ──────────────────────────────────────────────
+        evidence_texts = [m["text"] for m in matches]
+        safety_warnings = _inject_safety_warnings(evidence_texts, crop_name)
 
-          return {
-              "source": "pinecone_rag",
-              "evidence": [{"id": m["id"], "score": m["score"], "text": m["text"]} for m in matches],
-              "safety": {
-                  "banned_chemicals_found": banned_found,
-                  "is_safe": len(banned_found) == 0,
-              },
-          }
+        rag_result = {
+            "query": query,
+            "crop": crop_name,
+            "status": "FOUND",
+            "evidence": evidence_texts,
+            "scores": [m["score"] for m in matches],
+        }
+        if safety_warnings:
+            rag_result["safety_warnings"] = safety_warnings
 
-      # 2. No RAG results — Gemini generative fallback
-      logger.info(f"No RAG results for crop={crop_name}, query={query[:80]}. Using Gemini fallback.")
-      generated = await _gemini_fallback(query, crop_name)
+        # Generate grounded response using the proven prompt
+        grounded = await _grounded_generation(rag_result, crop_name)
 
-      if not generated:
-          return {
-              "source": "none",
-              "evidence": [],
-              "safety": {"banned_chemicals_found": [], "is_safe": True},
-          }
+        return {
+            "source": "pinecone_rag",
+            "status": "FOUND",
+            "grounded_response": grounded,
+            "evidence_count": len(matches),
+            "top_score": matches[0]["score"] if matches else 0,
+            "safety_warnings": safety_warnings,
+        }
 
-      # 3. Audit the generated response
-      audit = await _gemini_auditor(generated, crop_name)
+    # ── MISSING path ────────────────────────────────────────────────
+    logger.info("No RAG results for crop=%s, query=%s. Status: MISSING.", crop_name, query[:80])
 
-      return {
-          "source": "gemini_fallback",
-          "evidence": [{"text": generated, "score": 0.0}],
-          "safety": audit,
-      }
+    rag_result = {
+        "query": query,
+        "crop": crop_name,
+        "status": "MISSING",
+        "evidence": [],
+    }
+
+    # Generate response using grounded prompt (it knows to use expert knowledge for MISSING)
+    grounded = await _grounded_generation(rag_result, crop_name)
+
+    if not grounded:
+        return {
+            "source": "none",
+            "status": "MISSING",
+            "grounded_response": "",
+            "evidence_count": 0,
+        }
+
+    # Run local banned chemical scan on generated text
+    banned_found = scan_text_for_banned(grounded, crop_name)
+
+    return {
+        "source": "gemini_grounded",
+        "status": "MISSING",
+        "grounded_response": grounded,
+        "evidence_count": 0,
+        "safety_warnings": [
+            f"⚠️ BANNED: {b['chemical_name']} found in generated advice"
+            for b in banned_found
+        ] if banned_found else [],
+    }

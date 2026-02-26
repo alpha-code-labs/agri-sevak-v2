@@ -474,3 +474,45 @@ Set up a new WhatsApp Business app in Meta Developer console. Create a test phon
 
 ### Step 13.5 — Connect Azure deployment to WhatsApp and test
 Point Meta webhook to the AKS HTTPS endpoint. Send a real WhatsApp message. Verify the full round-trip: message received → processed → response sent back on WhatsApp.
+
+### Step 13.6 — Add varieties & sowing time tool
+The 870KB `varieties_and_sowing_time.json` file exists in `shared/data/` but is not wired into any tool. When a farmer asks about crop varieties (kisme) or sowing time (buvai ka samay), the agent currently relies on Gemini's own knowledge or RAG fallback — which may hallucinate.
+
+**Implementation:**
+- Create a 6th LangGraph tool `variety_advisor` in `shared/services/tools/variety_advisor.py`
+- Load `varieties_and_sowing_time.json` at startup (keyed by crop name)
+- Tool accepts `crop_name` and `district` → returns recommended varieties with sowing windows for the farmer's region
+- Register the tool in `shared/services/agent.py` (add to TOOLS list)
+- Update system prompt: "Use variety_advisor when the farmer asks about crop varieties (kisme/किस्में) or sowing time (buvai/बुवाई)"
+
+**Files:**
+1. `shared/services/tools/variety_advisor.py` (new)
+2. `shared/services/agent.py` (register tool + prompt update)
+
+### Step 13.7 — Replicate FOUND/MISSING RAG grounding logic
+The old system tagged each sub-query as FOUND (evidence available) or MISSING (no RAG match) and passed structured JSON to Gemini with explicit instructions: translate evidence for FOUND, use expert knowledge for MISSING. The auditor then specifically verified the MISSING (generated) parts for scientific accuracy. The new system lacks this — the agent gets raw RAG results and freestyles, and the auditor only checks for banned chemicals.
+
+**Implementation:**
+- Enhance `rag_retriever` tool to decompose compound queries into atomic sub-queries (e.g., "gehun mein thrips aur sinchai" → ["thrips", "sinchai"]), search Pinecone for each, and tag results as FOUND (score < threshold, with evidence) or MISSING (no match, empty evidence). Return structured JSON with status tags.
+- Add RAG grounding rules to agent system prompt (from old system's `RAG_GROUNDED_ADVICE_SYSTEM_INSTRUCTION`): for FOUND queries, ground response strictly in the provided evidence. For MISSING queries, use expert knowledge but mark as "भाग ब: विशेषज्ञ शोध". Inject `safety_warnings` for any FOUND evidence containing banned chemicals.
+- Replace the narrow banned-chemical-only auditor in `safety_audit.py` with the full auditor (from old system's `AUDITOR_INSTRUCTION`): verify scientific accuracy of MISSING/generated parts (dosages, chemical compatibility, HAU-standard compliance), clean up section labels, and format for WhatsApp readability.
+
+**Files:**
+1. `shared/services/tools/rag_retriever.py` (add decomposition + FOUND/MISSING tagging)
+2. `shared/services/agent.py` (add RAG grounding rules to system prompt)
+3. `shared/services/safety_audit.py` (replace with full auditor prompt)
+
+### Step 13.8 — Handle crops not in the RAG corpus
+When a farmer asks about a crop that doesn't exist in the RAG corpus (e.g., dragon fruit, avocado, or any crop not in the 125-crop `crops.json`), the current system has no structured fallback — the agent silently falls back to Gemini's own knowledge with no guardrails. The old system had a dedicated path for this: direct Gemini advice using `AGRI_ADVICE_SYSTEM_INSTRUCTION` followed by a scientific audit using `AGRI_ADVICE_AUDIT_SYSTEM_INSTRUCTION` that verified dosages, chemical safety, and factual accuracy.
+
+**Implementation:**
+- When `crop_detector` returns a crop not present in the Pinecone index (or returns low confidence / "unknown"), flag it in the agent state.
+- When `rag_retriever` detects the crop has zero vectors in Pinecone, return a structured response indicating `status: "NO_CORPUS"` instead of silently returning empty results.
+- Add agent prompt rules: when RAG returns NO_CORPUS, generate advice from expert knowledge but clearly caveat it — "यह जानकारी हमारे डेटाबेस में उपलब्ध नहीं है। विशेषज्ञ ज्ञान के आधार पर:" — and strongly recommend visiting the nearest KVK for verification.
+- Ensure the auditor (updated in Step 13.7) applies full scientific verification to NO_CORPUS responses, not just banned chemical checks.
+
+**Files:**
+1. `shared/services/tools/rag_retriever.py` (add NO_CORPUS detection)
+2. `shared/services/tools/crop_detector.py` (flag unknown/out-of-corpus crops)
+3. `shared/services/agent.py` (add NO_CORPUS handling rules to system prompt)
+4. `shared/services/safety_audit.py` (ensure full audit covers NO_CORPUS responses)

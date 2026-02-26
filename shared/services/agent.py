@@ -1,7 +1,7 @@
 """                                                                                                                                                                                                                                                                        
-  Step 4.2 — LangGraph Agent Graph                                                                                                                                                                                                                                           
-  StateGraph with 5 tools: crop_detector, rag_retriever, safety_checker,                                                                                                                                                                                                     
-  weather_fetcher, image_analyzer.                                                                                                                                                                                                                                           
+  Step 4.2 — LangGraph Agent Graph
+  StateGraph with 7 tools: crop_detector, rag_retriever, safety_checker,
+  weather_fetcher, image_analyzer, variety_advisor, general_crop_advisor.                                                                                                                                                                                                                                           
   Think → tool → observe → repeat. Max 10 iterations, 120s timeout.                                                                                                                                                                                                          
   """                                                                                                                                                                                                                                                                        
                                                                                                                                                                                                                                                                              
@@ -11,7 +11,7 @@ import time
 from functools import lru_cache
 
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_genai import ChatGoogleGenerativeAI, HarmBlockThreshold, HarmCategory
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 
@@ -22,13 +22,15 @@ from shared.services.tools.rag_retriever import rag_retriever
 from shared.services.tools.safety_checker import safety_checker
 from shared.services.tools.weather_fetcher import weather_fetcher
 from shared.services.tools.image_analyzer import image_analyzer
+from shared.services.tools.variety_advisor import variety_advisor
+from shared.services.tools.general_crop_advisor import general_crop_advisor
 
 logger = logging.getLogger(__name__)
 
 MAX_ITERATIONS = 10
 TIMEOUT_SECONDS = 120
 
-TOOLS = [crop_detector, rag_retriever, safety_checker, weather_fetcher, image_analyzer]
+TOOLS = [crop_detector, rag_retriever, safety_checker, weather_fetcher, image_analyzer, variety_advisor, general_crop_advisor]
 
 SYSTEM_PROMPT = """You are a Senior Agronomist at Haryana Agricultural University (HAU, Hisar).
   A farmer from {district} district in Haryana is asking for help via WhatsApp.
@@ -38,17 +40,23 @@ SYSTEM_PROMPT = """You are a Senior Agronomist at Haryana Agricultural Universit
   2. SAFETY: NEVER recommend banned pesticides. Always run the safety_checker tool before giving chemical advice.
   3. TOOL USAGE:
      - First use crop_detector to identify the crop from the farmer's input.
-     - Then use rag_retriever with the detected crop name to find verified knowledge.
-     - Use weather_fetcher if the farmer asks about weather or if weather context would help your advice. {location_hint}
+     - IMPORTANT: If the farmer does NOT mention any specific crop name in an input (e.g., "patte peele ho gaye", "kuch rog lag gaya"), do NOT call crop_detector for that input. Instead, ask the farmer to specify the crop name and optionally send a photo. If some inputs have a crop name and some don't, answer the ones you can and ask for clarification on the ambiguous ones.
+     - Then use rag_retriever with the detected crop name to find verified knowledge. IMPORTANT: Only use rag_retriever for crops that were detected via "classifier", "exact", or "fuzzy" source. These crops are in our knowledge base.
+     - If crop_detector returns source "gemini_fallback" (crop not in our standard list) AND the query is NOT about varieties/sowing time, use general_crop_advisor instead of rag_retriever. This provides scientifically audited advice for crops outside our RAG corpus.
+     - Use weather_fetcher ONLY if the farmer explicitly asks about weather (mausam, barish, temperature, etc.). Do NOT call weather_fetcher for general crop queries. {location_hint}
      - Use image_analyzer if the farmer sent a photo (blob_name will be in their input).
+     - Use variety_advisor when the farmer asks about crop varieties (kisme/किस्में), recommended varieties, or sowing time (buvai/बुवाई ka samay). Pass the crop name detected by crop_detector.
      - Use safety_checker to verify your advice doesn't include banned chemicals.
-  4. WHATSAPP FORMATTING:
+  4. MULTIPLE INPUTS: The farmer may send multiple messages (text, audio, images). Address EACH input separately with its own section in your response.
+     - If the farmer mentions a pest/disease by name AND sends a photo showing a DIFFERENT pest/disease, you MUST mention both: "आपने [X] बताया, लेकिन फोटो में [Y] दिख रहा है।" Then give treatment for what the photo actually shows.
+     - NEVER silently ignore any input. Every text, audio, and image must be addressed.
+  5. WHATSAPP FORMATTING:
      - Use *bold* for section titles (NOT # or ##).
      - Use short paragraphs, bullet points for dosages.
      - Keep response under 1500 characters (WhatsApp readability).
      - Start with: "किसान भाई, यह रहा आपके सवालों का उत्तर:"
-  5. If RAG retriever returns no results AND you are not confident, say so clearly and advise the farmer to visit their nearest KVK.
-  6. NEVER hallucinate dosages. If unsure, say "अपने नजदीकी KVK से संपर्क करें".
+  6. If RAG retriever returns no results AND you are not confident, say so clearly and advise the farmer to visit their nearest KVK.
+  7. NEVER hallucinate dosages. If unsure, say "अपने नजदीकी KVK से संपर्क करें".
   """
 
 
@@ -63,6 +71,12 @@ def _get_llm():
           model=settings.gemini_model_quality,
           google_api_key=keys[0],
           temperature=0,
+          safety_settings={
+              HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+              HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+              HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+              HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+          },
       )
       return llm.bind_tools(TOOLS)
 

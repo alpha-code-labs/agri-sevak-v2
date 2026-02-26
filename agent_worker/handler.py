@@ -20,6 +20,7 @@ from shared.services.graph_api import GraphAPI
 from shared.services.agent import run_agent
 from shared.services.safety_audit import safety_audit
 from shared.services.blob_storage import BlobStorage
+from shared.services.gemini_pool import GeminiPool
 from agent_worker.metrics import (
     messages_processed, tool_calls, rag_results,
     safety_triggers, agent_latency,
@@ -124,7 +125,20 @@ async def _run_agent_pipeline(
                   logger.error("Failed to process image %s: %s", inp["data"], e)
                   text_inputs.append("[Farmer sent a photo but it could not be downloaded]")
           elif inp["type"] == "audio":
-              text_inputs.append("[Farmer sent a voice message]")
+              try:
+                  audio_bytes = await graph.download_media(inp["data"])
+                  pool = GeminiPool()
+                  transcript = await pool.generate_audio(
+                      model=settings.gemini_model_fast,
+                      audio_bytes=audio_bytes,
+                      text_prompt="Transcribe this audio message from a farmer in India. Output ONLY the transcription in the original language (Hindi/Haryanvi/English). No commentary.",
+                      mime_type="audio/ogg",
+                  )
+                  logger.info("Audio transcribed: %s", transcript[:100])
+                  text_inputs.append(transcript)
+              except Exception as e:
+                  logger.error("Failed to transcribe audio %s: %s", inp["data"], e)
+                  text_inputs.append("[Farmer sent a voice message but it could not be transcribed]")
 
       if not text_inputs:
           text_inputs = ["किसान ने कोई सवाल नहीं भेजा"]
@@ -170,6 +184,7 @@ async def _run_agent_pipeline(
       except Exception as e:
           logger.error("Agent pipeline failed: %s", e, exc_info=True)
           messages_processed.labels(topic="agent_pipeline", status="error").inc()
+          audited = {}
           final_response = (
               "किसान भाई, तकनीकी समस्या के कारण जवाब देने में दिक्कत हो रही है। "
               "कृपया कुछ देर बाद दोबारा पूछें या अपने नजदीकी KVK से संपर्क करें।"
