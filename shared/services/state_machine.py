@@ -7,8 +7,8 @@ from shared.services.graph_api import HARYANA_DISTRICTS
 MAX_INPUTS = 3
 
 WEATHER_KEYWORDS = re.compile(
-    r"mausam|weather|barish|baarish|rain|temperature|tufaan|toofan|andhi|"
-    r"garmi|sardi|loo|heatwave|frost|pala|ola|hail|mौसम|बारिश|तूफान|"
+    r"\b(?:mausam|weather|barish|baarish|rain|temperature|tufaan|toofan|andhi|"
+    r"garmi|sardi|loo|heatwave|frost|pala|ola|hail)\b|mौसम|बारिश|तूफान|"
     r"आंधी|गर्मी|सर्दी|लू|ओला|पाला",
     re.IGNORECASE,
 )
