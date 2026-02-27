@@ -73,8 +73,17 @@ def _get_index():
 
 
 def _normalize_crop(crop_name: str) -> str:
-    """Normalize crop name to match Pinecone metadata format."""
-    return crop_name.strip().lower().replace(" ", "_")
+    """Normalize crop name to match Pinecone metadata format.
+    Maps synonyms/shortened names back to master name first
+    (e.g. 'Cotton' → 'Cotton Kapas' → 'cotton_kapas')."""
+    from shared.services.tools.crop_detector import SYNONYM_TO_MASTER
+
+    name = crop_name.strip()
+    # Try synonym lookup (handles LLM shortening: "Cotton" → "Cotton Kapas")
+    master = SYNONYM_TO_MASTER.get(name.lower()) or SYNONYM_TO_MASTER.get(name)
+    if master:
+        return master.lower().replace(" ", "_")
+    return name.lower().replace(" ", "_")
 
 
 def _search_pinecone(query: str, crop_name: str) -> list[dict]:
