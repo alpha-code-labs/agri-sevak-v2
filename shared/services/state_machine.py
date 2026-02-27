@@ -4,7 +4,7 @@ from shared.services.redis_session import Session, SessionState
 from shared.services.message_parser import ParsedMessage
 from shared.services.graph_api import HARYANA_DISTRICTS
 
-MAX_INPUTS = 6
+MAX_INPUTS = 3
 
 WEATHER_KEYWORDS = re.compile(
     r"mausam|weather|barish|baarish|rain|temperature|tufaan|toofan|andhi|"
