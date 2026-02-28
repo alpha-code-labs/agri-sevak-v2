@@ -164,6 +164,8 @@ async def rag_retriever(query: str, crop_name: str) -> dict:
 
     if matches:
         # ── FOUND path ──────────────────────────────────────────────
+        logger.info("RAG FOUND %d results for crop=%s, query=%s. Top score=%.4f",
+                    len(matches), crop_name, query[:80], matches[0]["score"])
         evidence_texts = [m["text"] for m in matches]
         safety_warnings = _inject_safety_warnings(evidence_texts, crop_name)
 
