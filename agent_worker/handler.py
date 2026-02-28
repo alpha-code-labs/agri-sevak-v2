@@ -163,20 +163,26 @@ async def _run_agent_pipeline(
                   for part in response
               )
 
-          # Run safety audit
-          # Try to detect crop name from agent tool calls
-          crop_name = ""
-          for tc in agent_result.get("tool_calls", []):
-              if tc["tool"] == "crop_detector":
-                  crop_name = tc.get("args", {}).get("farmer_input", "")
-                  break
+          # Skip safety audit if agent timed out (no real content to audit)
+          if not agent_result.get("tool_calls"):
+              logger.warning("Agent returned no tool calls (likely timeout) — skipping audit")
+              audited = {}
+              final_response = response
+          else:
+              # Run safety audit
+              # Try to detect crop name from agent tool calls
+              crop_name = ""
+              for tc in agent_result.get("tool_calls", []):
+                  if tc["tool"] == "crop_detector":
+                      crop_name = tc.get("args", {}).get("farmer_input", "")
+                      break
 
-          audited = await safety_audit(
-              agent_response=response,
-              crop_name=crop_name,
-              district=session.district or "",
-          )
-          final_response = audited["audited_response"]
+              audited = await safety_audit(
+                  agent_response=response,
+                  crop_name=crop_name,
+                  district=session.district or "",
+              )
+              final_response = audited["audited_response"]
 
           # Log tool calls to session
           session.tool_call_log = agent_result.get("tool_calls", [])
